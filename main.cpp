@@ -11,10 +11,6 @@ typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
 #define UNIT_Y 64
 
-namespace {
-	SDL_Renderer* renderer;
-}
-
 struct Vector2 {
 	float x;
 	float y;
@@ -61,6 +57,11 @@ struct Rectangle {
 	}
 };
 
+namespace {
+	SDL_Renderer* renderer;
+	Vector2 cameraPosition;
+}
+
 class Sprite {
 private:
 	SDL_Texture* texture;
@@ -82,7 +83,7 @@ public:
 	}
 
 	void Draw() {
-		SDL_Rect r = { UNIT_X * rectangle.position.x, UNIT_Y * rectangle.position.y, UNIT_X * rectangle.size.x, UNIT_Y * rectangle.size.y };
+		SDL_Rect r = { UNIT_X * rectangle.position.x - (UNIT_X * cameraPosition.x), UNIT_Y * rectangle.position.y + (UNIT_Y * cameraPosition.y), UNIT_X * rectangle.size.x, UNIT_Y * rectangle.size.y };
 		SDL_RenderCopyEx(renderer, texture, NULL, &r, angle, NULL, SDL_FLIP_NONE);
 	}
 };
@@ -120,7 +121,7 @@ public:
 		for (int i = 0; i < PIPE_HEIGHT; i++) {
 			if (i == entrance || i == entrance + 1)
 				continue;
-			spr->rectangle.position = Vector2(x, i);
+			spr->rectangle.position = Vector2(x + cameraPosition.x, i + cameraPosition.y);
 			spr->Draw();
 		}
 	}
@@ -135,10 +136,9 @@ int main() {
 	bool running = true;
 
 	const float playerStartY = 5.75f;
-	const float horizontalSpeed = 50.0f;
 	Sprite* sprite = new Sprite("ship.png", Rectangle({ 0.0f, playerStartY }, { 2, 1 }), 0.0f);
 	Sprite* floor = new Sprite("floor.png", Rectangle(), 0);
-
+	
 	TimePoint begin, end;
 	double delta = 0.0;
 
