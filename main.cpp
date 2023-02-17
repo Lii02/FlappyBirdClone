@@ -6,8 +6,6 @@
 #include <SDL2/SDL.h>
 #undef main
 #include <SDL2/SDL_image.h>
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
 
 typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
