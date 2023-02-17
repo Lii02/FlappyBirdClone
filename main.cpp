@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <queue>
 #include <cstdint>
 #include <SDL2/SDL.h>
 #undef main
@@ -38,8 +39,20 @@ struct Vector2 {
 		return Vector2(x + right.x, y + right.y);
 	}
 
+	Vector2 operator+=(Vector2 right) {
+		return Vector2(x += right.x, y += right.y);
+	}
+
 	Vector2 operator/(Vector2 right) {
 		return Vector2(x / right.x, y / right.y);
+	}
+
+	Vector2 operator*(Vector2 right) {
+		return Vector2(x * right.x, y * right.y);
+	}
+
+	Vector2 operator*=(Vector2 right) {
+		return Vector2(x *= right.x, y *= right.y);
 	}
 };
 
@@ -135,22 +148,37 @@ int main() {
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	bool running = true;
 
-	const float playerStartY = 5.75f;
-	Sprite* sprite = new Sprite("ship.png", Rectangle({ 0.0f, playerStartY }, { 2, 1 }), 0.0f);
+	bool playing = false;
+	const float moveSpeed = 2.75f;
+	const float jumpForce = 2000.0f;
+	constexpr float weight = 0.5f;
+	constexpr float gravity = (UNIT_Y / -9.8f) * weight;
+	Sprite* player = new Sprite("ship.png", Rectangle({ 5.25f, 5.75f }, { 2, 1 }), 0.0f);
 	Sprite* floor = new Sprite("floor.png", Rectangle(), 0);
-	
+	Vector2 velocity;
+	Vector2 acceleration = Vector2(0, 0);
+
+	bool keys[0xFF] = { 0 };
+	bool lastKeys[0xFF] = { 0 };
 	TimePoint begin, end;
 	double delta = 0.0;
 
 	while (running) {
 		begin = std::chrono::high_resolution_clock::now();
 		float dt = static_cast<float>(delta / 1000);
+		velocity.y = 0;
 
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
 			case SDL_QUIT:
 				running = false;
+				break;
+			case SDL_KEYDOWN:
+				keys[ev.key.keysym.sym] = true;
+				break;
+			case SDL_KEYUP:
+				keys[ev.key.keysym.sym] = false;
 				break;
 			}
 		}
@@ -164,16 +192,34 @@ int main() {
 			}
 		}
 
-		sprite->Draw();
+		if (!playing && keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
+			playing = true;
+			continue;
+		}
+
+		if (playing) {
+			player->rectangle.position.x += dt * moveSpeed;
+			player->Draw();
+			cameraPosition.x += dt * moveSpeed;
+			acceleration.y -= gravity;
+
+			velocity += acceleration * dt;
+			if (keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
+				acceleration = 0;
+				acceleration.y -= jumpForce;
+			}
+			player->rectangle.position += velocity * dt;
+		}
 
 		SDL_RenderPresent(renderer);
 		end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double, std::milli> deltaDuration = end - begin;
 		delta = deltaDuration.count();
+		memcpy(lastKeys, keys, 0xFF);
 	}
 
 	delete floor;
-	delete sprite;
+	delete player;
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	IMG_Quit();
