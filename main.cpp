@@ -150,8 +150,8 @@ int main() {
 
 	bool playing = false;
 	const float moveSpeed = 2.75f;
-	const float jumpForce = 2000.0f;
-	constexpr float weight = 0.5f;
+	const float jumpForce = 2400.0f;
+	constexpr float weight = 0.85f;
 	constexpr float gravity = (UNIT_Y / -9.8f) * weight;
 	Sprite* player = new Sprite("ship.png", Rectangle({ 5.25f, 5.75f }, { 2, 1 }), 0.0f);
 	Sprite* floor = new Sprite("floor.png", Rectangle(), 0);
@@ -185,19 +185,18 @@ int main() {
 		SDL_RenderClear(renderer);
 		SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
 
-		for (int x = 0; x < 13; x++) {
-			for (int y = PIPE_HEIGHT; y < 15; y++) {
-				floor->rectangle.position = { (float)x, (float)y };
-				floor->Draw();
-			}
-		}
-
 		if (!playing && keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
 			playing = true;
-			continue;
 		}
 
 		if (playing) {
+			for (int x = cameraPosition.x; x < cameraPosition.x + 13; x++) {
+				for (int y = PIPE_HEIGHT; y < 15; y++) {
+					floor->rectangle.position = { (float)x, (float)y };
+					floor->Draw();
+				}
+			}
+
 			player->rectangle.position.x += dt * moveSpeed;
 			player->Draw();
 			cameraPosition.x += dt * moveSpeed;
@@ -210,6 +209,9 @@ int main() {
 			}
 			player->rectangle.position += velocity * dt;
 		}
+
+		if (keys[SDLK_ESCAPE])
+			break;
 
 		SDL_RenderPresent(renderer);
 		end = std::chrono::high_resolution_clock::now();
