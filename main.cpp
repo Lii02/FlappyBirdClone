@@ -7,6 +7,8 @@
 #include <SDL2/SDL.h>
 #undef main
 #include <SDL2/SDL_image.h>
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 
 typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
@@ -34,7 +36,7 @@ struct Vector2 {
 	Vector2 operator-(Vector2 right) {
 		return Vector2(x - right.x, y - right.y);
 	}
-	
+
 	Vector2 operator+(Vector2 right) {
 		return Vector2(x + right.x, y + right.y);
 	}
@@ -54,6 +56,13 @@ struct Vector2 {
 	Vector2 operator*=(Vector2 right) {
 		return Vector2(x *= right.x, y *= right.y);
 	}
+
+	friend std::ostream& operator<<(std::ostream& os, const Vector2& vec) {
+		os << vec.x;
+		os << ' ';
+		os << vec.y;
+		return os;
+	}
 };
 
 struct Rectangle {
@@ -67,6 +76,28 @@ struct Rectangle {
 	Rectangle(Vector2 position, Vector2 size) {
 		this->position = position;
 		this->size = size;
+	}
+
+	Rectangle(float v) {
+		this->position = v;
+		this->size = v;
+	}
+
+	bool Contains(Rectangle with) {
+		if (position.x < with.position.x + with.size.x &&
+			position.x + size.x > with.position.x &&
+			position.y < with.position.y + with.size.y &&
+			position.y + size.y > with.position.y)
+			return true;
+		else
+			return false;
+	}
+
+	friend std::ostream& operator<<(std::ostream& os, const Rectangle& rect) {
+		os << rect.position;
+		os << ", ";
+		os << rect.size;
+		return os;
 	}
 };
 
@@ -101,29 +132,35 @@ public:
 	}
 };
 
-bool IsColliding(Rectangle left, Rectangle right) {
-	Vector2 leftMin = left.position - left.size / 2.0f;
-	Vector2 leftMax = left.position + left.size / 2.0f;
-	Vector2 rightMin = right.position - right.size / 2.0f;
-	Vector2 rightMax = right.position + right.size / 2.0f;
-	if (leftMin.x < rightMax.x && leftMax.x > rightMin.x &&
-		leftMin.y < rightMax.y && leftMax.y > rightMin.y)
-		return true;
-	else
-		return false;
-}
-
 #define PIPE_HEIGHT 11
 
 class Pipe {
 private:
 	int entrance;
-	float x;
 	Sprite* spr;
 public:
-	Pipe() {
-		spr = new Sprite("pipe.png", Rectangle(), 0.0f);
-		entrance = rand() % PIPE_HEIGHT;
+	Rectangle top, bottom;
+	float x;
+
+	Pipe(float x) {
+		this->x = x;
+		spr = new Sprite("assets/pipe.png", Rectangle(), 0.0f);
+		entrance = rand() % (PIPE_HEIGHT - 2);
+		bool isBottom = false;
+		top.position = bottom.position = Vector2(x, -1);
+		for (int i = 0; i < PIPE_HEIGHT; i++) {
+			if (i == entrance || i == entrance + 1 || i == entrance + 2) {
+				isBottom = true;
+				bottom.position.y = i + 1;
+				continue;
+			}
+			top.size.x = bottom.size.x = 1;
+			if (isBottom)
+				bottom.size.y++;
+			else
+				top.size.y++;
+		}
+		std::swap(top, bottom);
 	}
 
 	~Pipe() {
@@ -132,11 +169,15 @@ public:
 
 	void Draw() {
 		for (int i = 0; i < PIPE_HEIGHT; i++) {
-			if (i == entrance || i == entrance + 1)
+			if (i == entrance || i == entrance + 1 || i == entrance + 2)
 				continue;
-			spr->rectangle.position = Vector2(x + cameraPosition.x, i + cameraPosition.y);
+			spr->rectangle.position = Vector2(x, i);
 			spr->Draw();
 		}
+	}
+
+	bool IsColliding(Rectangle playerBox) {
+		return playerBox.Contains(top) || playerBox.Contains(bottom);
 	}
 };
 
@@ -150,18 +191,33 @@ int main() {
 
 	bool playing = false;
 	const float moveSpeed = 2.75f;
-	const float jumpForce = 2400.0f;
-	constexpr float weight = 0.85f;
-	constexpr float gravity = (UNIT_Y / -9.8f) * weight;
-	Sprite* player = new Sprite("ship.png", Rectangle({ 5.25f, 5.75f }, { 2, 1 }), 0.0f);
-	Sprite* floor = new Sprite("floor.png", Rectangle(), 0);
+	const float jumpForce = 3000.0f;
+	constexpr float gravity = (UNIT_Y / -9.8f);
+	const Vector2 startPosition = Vector2(5.8f, 5.75f);
+	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, { 0.75f, 0.75f }), 0.0f);
+	Sprite* floor = new Sprite("assets/floor.png", Rectangle(), 0);
 	Vector2 velocity;
 	Vector2 acceleration = Vector2(0, 0);
+	std::vector<Pipe*> pipes;
 
 	bool keys[0xFF] = { 0 };
 	bool lastKeys[0xFF] = { 0 };
 	TimePoint begin, end;
 	double delta = 0.0;
+	float pipeX = 0;
+	bool gameOver = false;
+
+	auto Reset = [&]() {
+		for (Pipe* p : pipes) {
+			delete p;
+		}
+		pipes.clear();
+		player->rectangle.position = startPosition;
+		cameraPosition = 0;
+		pipeX = 0;
+		playing = true;
+		std::cout << "Reset" << std::endl;
+	};
 
 	while (running) {
 		begin = std::chrono::high_resolution_clock::now();
@@ -186,15 +242,27 @@ int main() {
 		SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
 
 		if (!playing && keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
-			playing = true;
+			Reset();
+		}
+
+		Rectangle groundBox = Rectangle(Vector2(cameraPosition.x, PIPE_HEIGHT), Vector2(13, 1));
+		for (int x = cameraPosition.x; x < cameraPosition.x + 13; x++) {
+			for (int y = PIPE_HEIGHT; y < 15; y++) {
+				floor->rectangle.position = { (float)x, (float)y };
+				floor->rectangle.size = 1;
+				floor->Draw();
+			}
 		}
 
 		if (playing) {
-			for (int x = cameraPosition.x; x < cameraPosition.x + 13; x++) {
-				for (int y = PIPE_HEIGHT; y < 15; y++) {
-					floor->rectangle.position = { (float)x, (float)y };
-					floor->Draw();
+			if (!pipes.size()) {
+				int counter = 0;
+				while (counter < 10) {
+					pipeX += 8;
+					pipes.push_back(new Pipe(player->rectangle.position.x + counter + pipeX));
+					counter++;
 				}
+				pipeX = 0;
 			}
 
 			player->rectangle.position.x += dt * moveSpeed;
@@ -208,10 +276,27 @@ int main() {
 				acceleration.y -= jumpForce;
 			}
 			player->rectangle.position += velocity * dt;
-		}
 
-		if (keys[SDLK_ESCAPE])
-			break;
+			if (player->rectangle.Contains(groundBox)) {
+				std::cout << "You Died!" << std::endl;
+				playing = false;
+			}
+
+			for (size_t i = 0; i < pipes.size(); i++) {
+				Pipe* p = pipes[i];
+				p->Draw();
+
+				if (p->IsColliding(player->rectangle)) {
+					std::cout << "You Died!" << std::endl;
+					playing = false;
+				}
+
+				if (p->x < cameraPosition.x - 2) {
+					delete p;
+					pipes.erase(pipes.begin() + i);
+				}
+			}
+		}
 
 		SDL_RenderPresent(renderer);
 		end = std::chrono::high_resolution_clock::now();
