@@ -15,6 +15,7 @@ typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_Y 64
 #define SCREEN_WIDTH 832
 #define SCREEN_HEIGHT 832
+#define HALF_WIDTH (SCREEN_WIDTH / 2)
 #define GROUND_WIDTH (SCREEN_WIDTH / UNIT_X)
 #define GROUND_HEIGHT 2
 #define PIPE_HEIGHT 11
@@ -236,8 +237,8 @@ int main() {
 	SDL_Init(SDL_INIT_EVERYTHING);
 	IMG_Init(IMG_INIT_PNG);
 	TTF_Init();
+	Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096);
 	srand(time(NULL));
-	constexpr float halfWidth = SCREEN_WIDTH / 2;
 	SDL_Window* window = SDL_CreateWindow("Flappy Bird Clone", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	bool running = true;
@@ -252,6 +253,9 @@ int main() {
 	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, Vector2(0.75f, 0.75f)), 0.0f);
 	Sprite* floor = new Sprite("assets/floor.png", Rectangle(), 0);
 	Sprite* logo = new Sprite("assets/LiStudiosLogo.png", Rectangle(Vector2(3, 3), Vector2(4, 4)), 0);
+	Mix_Music* jumpSound = Mix_LoadMUS("assets/tone1.ogg");
+	Mix_Music* scoreSound = Mix_LoadMUS("assets/zap1.ogg");
+	Mix_Music* deathSound = Mix_LoadMUS("assets/zap2.ogg");
 	Vector2 velocity, acceleration;
 	std::vector<Pipe*> pipes;
 
@@ -262,9 +266,9 @@ int main() {
 	bool gameOver = false;
 	Label* scoreText = new Label;
 	Label* deadText = new Label("You Died", Vector2(), { 255, 0, 0 });
-	deadText->position = Vector2(halfWidth - (deadText->size.x / 2), 128);
+	deadText->position = Vector2(HALF_WIDTH - (deadText->size.x / 2), 128);
 	Label* startText = new Label("Press SPACE to start", Vector2(), { 0, 255, 0 });
-	startText->position = Vector2(halfWidth - (startText->size.x / 2), 512);
+	startText->position = Vector2(HALF_WIDTH - (startText->size.x / 2), 512);
 
 	auto Reset = [&]() {
 		score = 0;
@@ -346,6 +350,7 @@ int main() {
 			if (keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
 				acceleration = 0;
 				acceleration.y -= jumpForce;
+				Mix_PlayMusic(jumpSound, 1);
 			}
 			player->rectangle.position += velocity * dt;
 
@@ -353,6 +358,7 @@ int main() {
 				std::cout << "You Died!" << std::endl;
 				playing = false;
 				gameOver = true;
+				Mix_PlayMusic(deathSound, 1);
 			}
 
 			for (size_t i = 0; i < pipes.size(); i++) {
@@ -363,14 +369,16 @@ int main() {
 					std::cout << "You Died!" << std::endl;
 					playing = false;
 					gameOver = true;
+					Mix_PlayMusic(deathSound, 1);
 				}
 
 				if (p->IsCollidingScoreArea(player->rectangle) && !p->scored) {
 					score++;
 					std::cout << "Score: " << score << std::endl;
 					scoreText->UpdateText("Score: " + std::to_string(score));
-					scoreText->position = Vector2(halfWidth - (scoreText->size.x / 2), 32);
+					scoreText->position = Vector2(HALF_WIDTH - (scoreText->size.x / 2), 32);
 					p->scored = true;
+					Mix_PlayMusic(scoreSound, 1);
 				}
 
 				if (p->x < cameraPosition.x - 2) {
@@ -393,12 +401,16 @@ int main() {
 
 	delete scoreText;
 	delete deadText;
+	Mix_FreeMusic(deathSound);
+	Mix_FreeMusic(scoreSound);
+	Mix_FreeMusic(jumpSound);
 	delete logo;
 	delete floor;
 	delete player;
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	TTF_CloseFont(font);
+	Mix_CloseAudio();
 	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
