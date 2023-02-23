@@ -7,8 +7,8 @@
 #include <SDL2/SDL.h>
 #undef main
 #include <SDL2/SDL_image.h>
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+#include <SDL2/SDL_ttf.h>
+#include <AL/al.h>
 
 typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
@@ -18,12 +18,7 @@ struct Vector2 {
 	float x;
 	float y;
 
-	Vector2() {
-		this->x = 0;
-		this->y = 0;
-	}
-
-	Vector2(float v) {
+	Vector2(float v = 0) {
 		this->x = v;
 		this->y = v;
 	}
@@ -104,6 +99,7 @@ struct Rectangle {
 namespace {
 	SDL_Renderer* renderer;
 	Vector2 cameraPosition;
+	TTF_Font* font;
 }
 
 class Sprite {
@@ -139,15 +135,19 @@ private:
 	int entrance;
 	Sprite* spr;
 public:
-	Rectangle top, bottom;
 	float x;
+	Rectangle top, bottom, scoreArea;
+	bool scored;
 
 	Pipe(float x) {
 		this->x = x;
+		this->scored = false;
 		spr = new Sprite("assets/pipe.png", Rectangle(), 0.0f);
 		entrance = rand() % (PIPE_HEIGHT - 2);
 		bool isBottom = false;
 		top.position = bottom.position = Vector2(x, -1);
+		scoreArea.position = Vector2(x + 0.5f, entrance);
+		scoreArea.size = Vector2(0.5f, 3);
 		for (int i = 0; i < PIPE_HEIGHT; i++) {
 			if (i == entrance || i == entrance + 1 || i == entrance + 2) {
 				isBottom = true;
@@ -179,17 +179,67 @@ public:
 	bool IsColliding(Rectangle playerBox) {
 		return playerBox.Contains(top) || playerBox.Contains(bottom);
 	}
+
+	bool IsCollidingScoreArea(Rectangle playerBox) {
+		return playerBox.Contains(scoreArea);
+	}
+};
+
+class Label {
+private:
+	SDL_Texture* texture = nullptr;
+	std::string text;
+public:
+	Vector2 position;
+	Vector2 size;
+
+	Label(std::string text = "", Vector2 position = Vector2()) {
+		this->position = position;
+		UpdateText(text);
+	}
+
+	~Label() {
+		SDL_DestroyTexture(texture);
+	}
+
+	void UpdateText(std::string text) {
+		this->text = text;
+
+		if (!text.empty()) {
+			SDL_Surface* surf = TTF_RenderText_Solid(font, text.c_str(), { 255, 0, 0 });
+			texture = SDL_CreateTextureFromSurface(renderer, surf);
+			size.x = surf->w;
+			size.y = surf->h;
+			SDL_FreeSurface(surf);
+		}
+	}
+
+	void Draw() {
+		if (texture != nullptr) {
+			SDL_Rect rect;
+			rect.x = position.x;
+			rect.y = position.y;
+			rect.w = size.x;
+			rect.h = size.y;
+
+			SDL_RenderCopy(renderer, texture, NULL, &rect);
+		}
+	}
 };
 
 int main() {
 	SDL_Init(SDL_INIT_EVERYTHING);
 	IMG_Init(IMG_INIT_PNG);
+	TTF_Init();
 	srand(time(NULL));
+	constexpr float halfWidth = 832 / 2;
 	SDL_Window* window = SDL_CreateWindow("Flappy Bird Clone", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 832, 832, SDL_WINDOW_SHOWN);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	bool running = true;
+	font = TTF_OpenFont("assets/arial.ttf", 24);
 
 	bool playing = false;
+	int score = 0;
 	const float moveSpeed = 2.75f;
 	const float jumpForce = 3000.0f;
 	constexpr float gravity = (UNIT_Y / -9.8f);
@@ -206,8 +256,12 @@ int main() {
 	double delta = 0.0;
 	float pipeX = 0;
 	bool gameOver = false;
+	Label* scoreText = new Label;
+	Label* deadText = new Label("You Died", Vector2());
+	deadText->position = Vector2(halfWidth - (deadText->size.x / 2), 128);
 
 	auto Reset = [&]() {
+		score = 0;
 		for (Pipe* p : pipes) {
 			delete p;
 		}
@@ -216,6 +270,9 @@ int main() {
 		cameraPosition = 0;
 		pipeX = 0;
 		playing = true;
+		gameOver = false;
+		scoreText->UpdateText("");
+		deadText->UpdateText("");
 		std::cout << "Reset" << std::endl;
 	};
 
@@ -254,17 +311,25 @@ int main() {
 			}
 		}
 
-		if (playing) {
-			if (!pipes.size()) {
-				int counter = 0;
-				while (counter < 10) {
-					pipeX += 8;
-					pipes.push_back(new Pipe(player->rectangle.position.x + counter + pipeX));
-					counter++;
-				}
-				pipeX = 0;
+		if (!pipes.size()) {
+			int counter = 0;
+			while (counter < 10) {
+				pipeX += 8;
+				pipes.push_back(new Pipe(player->rectangle.position.x + counter + pipeX));
+				counter++;
 			}
+			pipeX = 0;
+		}
 
+		if (!playing) {
+			player->Draw();
+
+			for (size_t i = 0; i < pipes.size(); i++) {
+				Pipe* p = pipes[i];
+				p->Draw();
+			}
+		}
+		else {
 			player->rectangle.position.x += dt * moveSpeed;
 			player->Draw();
 			cameraPosition.x += dt * moveSpeed;
@@ -280,6 +345,7 @@ int main() {
 			if (player->rectangle.Contains(groundBox)) {
 				std::cout << "You Died!" << std::endl;
 				playing = false;
+				gameOver = true;
 			}
 
 			for (size_t i = 0; i < pipes.size(); i++) {
@@ -289,6 +355,15 @@ int main() {
 				if (p->IsColliding(player->rectangle)) {
 					std::cout << "You Died!" << std::endl;
 					playing = false;
+					gameOver = true;
+				}
+
+				if (p->IsCollidingScoreArea(player->rectangle) && !p->scored) {
+					score++;
+					std::cout << "Score: " << score << std::endl;
+					scoreText->UpdateText("Score: " + std::to_string(score));
+					scoreText->position = Vector2(halfWidth - (scoreText->size.x / 2), 32);
+					p->scored = true;
 				}
 
 				if (p->x < cameraPosition.x - 2) {
@@ -298,6 +373,10 @@ int main() {
 			}
 		}
 
+		if (gameOver)
+			deadText->Draw();
+		scoreText->Draw();
+
 		SDL_RenderPresent(renderer);
 		end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double, std::milli> deltaDuration = end - begin;
@@ -305,10 +384,14 @@ int main() {
 		memcpy(lastKeys, keys, 0xFF);
 	}
 
+	delete scoreText;
+	delete deadText;
 	delete floor;
 	delete player;
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
+	TTF_CloseFont(font);
+	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 	return 0;
