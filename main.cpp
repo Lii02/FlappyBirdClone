@@ -259,6 +259,8 @@ int main() {
 	Label* scoreText = new Label;
 	Label* deadText = new Label("You Died", Vector2());
 	deadText->position = Vector2(halfWidth - (deadText->size.x / 2), 128);
+	Label* startText = new Label("Press SPACE to start", Vector2());
+	startText->position = Vector2(halfWidth - (startText->size.x / 2), 512);
 
 	auto Reset = [&]() {
 		score = 0;
@@ -328,6 +330,7 @@ int main() {
 				Pipe* p = pipes[i];
 				p->Draw();
 			}
+			startText->Draw();
 		}
 		else {
 			player->rectangle.position.x += dt * moveSpeed;
