@@ -13,6 +13,7 @@
 typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
 #define UNIT_Y 64
+#define GRAVITY (UNIT_Y / -9.8f);
 #define SCREEN_WIDTH 832
 #define SCREEN_HEIGHT 832
 #define HALF_WIDTH (SCREEN_WIDTH / 2)
@@ -59,6 +60,7 @@ struct Vector2 {
 		return Vector2(x *= right.x, y *= right.y);
 	}
 
+	// std::cout helper
 	friend std::ostream& operator<<(std::ostream& os, const Vector2& vec) {
 		os << vec.x;
 		os << ' ';
@@ -95,6 +97,7 @@ struct Rectangle {
 			return false;
 	}
 
+	// std::cout helper
 	friend std::ostream& operator<<(std::ostream& os, const Rectangle& rect) {
 		os << rect.position;
 		os << ", ";
@@ -114,11 +117,9 @@ private:
 	SDL_Texture* texture;
 public:
 	Rectangle rectangle;
-	float angle;
-
-	Sprite(std::string filename, Rectangle rectangle, float angle) {
+	
+	Sprite(std::string filename, Rectangle rectangle) {
 		this->rectangle = rectangle;
-		this->angle = angle;
 		SDL_Surface* surface = IMG_Load(filename.c_str());
 		texture = SDL_CreateTextureFromSurface(renderer, surface);
 		SDL_FreeSurface(surface);
@@ -131,7 +132,7 @@ public:
 
 	void Draw() {
 		SDL_Rect r = { UNIT_X * rectangle.position.x - (UNIT_X * cameraPosition.x), UNIT_Y * rectangle.position.y + (UNIT_Y * cameraPosition.y), UNIT_X * rectangle.size.x, UNIT_Y * rectangle.size.y };
-		SDL_RenderCopyEx(renderer, texture, NULL, &r, angle, NULL, SDL_FLIP_NONE);
+		SDL_RenderCopy(renderer, texture, NULL, &r);
 	}
 };
 
@@ -147,7 +148,7 @@ public:
 	Pipe(float x) {
 		this->x = x;
 		this->scored = false;
-		spr = new Sprite("assets/pipe.png", Rectangle(), 0.0f);
+		spr = new Sprite("assets/pipe.png", Rectangle());
 		entrance = rand() % (PIPE_HEIGHT - 2);
 		bool isBottom = false;
 		top.position = bottom.position = Vector2(x, -1);
@@ -245,14 +246,14 @@ int main() {
 	font = TTF_OpenFont("assets/arial.ttf", 24);
 
 	bool playing = false;
+	bool gameOver = false;
 	int score = 0;
 	const float moveSpeed = 2.75f;
 	const float jumpForce = 3000.0f;
-	constexpr float gravity = (UNIT_Y / -9.8f);
 	const Vector2 startPosition = Vector2(5.8f, 5.75f);
-	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, Vector2(0.75f, 0.75f)), 0.0f);
-	Sprite* floor = new Sprite("assets/floor.png", Rectangle(), 0);
-	Sprite* logo = new Sprite("assets/LiStudiosLogo.png", Rectangle(Vector2(3, 3), Vector2(4, 4)), 0);
+	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, Vector2(0.75f, 0.75f)));
+	Sprite* floor = new Sprite("assets/floor.png", Rectangle());
+	Sprite* logo = new Sprite("assets/LiStudiosLogo.png", Rectangle(Vector2(3, 3), Vector2(4, 4)));
 	Mix_Music* jumpSound = Mix_LoadMUS("assets/tone1.ogg");
 	Mix_Music* scoreSound = Mix_LoadMUS("assets/zap1.ogg");
 	Mix_Music* deathSound = Mix_LoadMUS("assets/zap2.ogg");
@@ -263,7 +264,6 @@ int main() {
 	bool lastKeys[0xFF] = { 0 };
 	TimePoint begin, end;
 	double delta = 0, pipeX = 0;
-	bool gameOver = false;
 	Label* scoreText = new Label;
 	Label* deadText = new Label("You Died", Vector2(), { 255, 0, 0 });
 	deadText->position = Vector2(HALF_WIDTH - (deadText->size.x / 2), 128);
@@ -315,6 +315,8 @@ int main() {
 
 		Rectangle groundBox = Rectangle(Vector2(cameraPosition.x, PIPE_HEIGHT), Vector2(GROUND_WIDTH, 1));
 		Rectangle skyBox = Rectangle(Vector2(cameraPosition.x, -1), Vector2(GROUND_WIDTH, 1));
+		
+		// Generate the floor as the camera moves right
 		for (int x = cameraPosition.x; x < cameraPosition.x + GROUND_WIDTH; x++) {
 			for (int y = PIPE_HEIGHT; y < PIPE_HEIGHT + GROUND_HEIGHT; y++) {
 				floor->rectangle.position = { (float)x, (float)y };
@@ -322,6 +324,7 @@ int main() {
 			}
 		}
 
+		// Generate the pipes when the the presses SPACE
 		if (!pipes.size() && (playing && !gameOver)) {
 			int counter = 0;
 			while (counter < 10) {
@@ -344,7 +347,7 @@ int main() {
 			player->rectangle.position.x += dt * moveSpeed;
 			player->Draw();
 			cameraPosition.x += dt * moveSpeed;
-			acceleration.y -= gravity;
+			acceleration.y -= GRAVITY;
 
 			velocity += acceleration * dt;
 			if (keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
