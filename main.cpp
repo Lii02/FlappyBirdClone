@@ -1,3 +1,8 @@
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define NOHELP
+#define NOGDI
+#include <windows.h>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -234,7 +239,7 @@ public:
 	}
 };
 
-int main() {
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
 	SDL_Init(SDL_INIT_EVERYTHING);
 	IMG_Init(IMG_INIT_PNG);
 	TTF_Init();
