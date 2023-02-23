@@ -1,8 +1,5 @@
 # Flappy Bird Clone
 ## Dependencies
-- SDL2
-- SDL2_image
-- SDL2_ttf
-- OpenAL Soft
+- SDL2 (image, ttf, mixer)
 ## Credits
 - Kenney (art)

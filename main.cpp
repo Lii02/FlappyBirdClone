@@ -8,11 +8,17 @@
 #undef main
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
-#include <AL/al.h>
+#include <SDL2/SDL_mixer.h>
 
 typedef std::chrono::high_resolution_clock::time_point TimePoint;
 #define UNIT_X 64
 #define UNIT_Y 64
+#define SCREEN_WIDTH 832
+#define SCREEN_HEIGHT 832
+#define GROUND_WIDTH (SCREEN_WIDTH / UNIT_X)
+#define GROUND_HEIGHT 2
+#define PIPE_HEIGHT 11
+#define PIPE_GAP 8
 
 struct Vector2 {
 	float x;
@@ -128,8 +134,6 @@ public:
 	}
 };
 
-#define PIPE_HEIGHT 11
-
 class Pipe {
 private:
 	int entrance;
@@ -160,7 +164,6 @@ public:
 			else
 				top.size.y++;
 		}
-		std::swap(top, bottom);
 	}
 
 	~Pipe() {
@@ -189,12 +192,14 @@ class Label {
 private:
 	SDL_Texture* texture = nullptr;
 	std::string text;
+	SDL_Color color;
 public:
 	Vector2 position;
 	Vector2 size;
 
-	Label(std::string text = "", Vector2 position = Vector2()) {
+	Label(std::string text = "", Vector2 position = Vector2(), SDL_Color color = {255, 255, 255}) {
 		this->position = position;
+		this->color = color;
 		UpdateText(text);
 	}
 
@@ -206,7 +211,7 @@ public:
 		this->text = text;
 
 		if (!text.empty()) {
-			SDL_Surface* surf = TTF_RenderText_Solid(font, text.c_str(), { 255, 0, 0 });
+			SDL_Surface* surf = TTF_RenderText_Solid(font, text.c_str(), color);
 			texture = SDL_CreateTextureFromSurface(renderer, surf);
 			size.x = surf->w;
 			size.y = surf->h;
@@ -232,8 +237,8 @@ int main() {
 	IMG_Init(IMG_INIT_PNG);
 	TTF_Init();
 	srand(time(NULL));
-	constexpr float halfWidth = 832 / 2;
-	SDL_Window* window = SDL_CreateWindow("Flappy Bird Clone", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 832, 832, SDL_WINDOW_SHOWN);
+	constexpr float halfWidth = SCREEN_WIDTH / 2;
+	SDL_Window* window = SDL_CreateWindow("Flappy Bird Clone", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	bool running = true;
 	font = TTF_OpenFont("assets/arial.ttf", 24);
@@ -244,22 +249,21 @@ int main() {
 	const float jumpForce = 3000.0f;
 	constexpr float gravity = (UNIT_Y / -9.8f);
 	const Vector2 startPosition = Vector2(5.8f, 5.75f);
-	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, { 0.75f, 0.75f }), 0.0f);
+	Sprite* player = new Sprite("assets/ship.png", Rectangle(startPosition, Vector2(0.75f, 0.75f)), 0.0f);
 	Sprite* floor = new Sprite("assets/floor.png", Rectangle(), 0);
-	Vector2 velocity;
-	Vector2 acceleration = Vector2(0, 0);
+	Sprite* logo = new Sprite("assets/LiStudiosLogo.png", Rectangle(Vector2(3, 3), Vector2(4, 4)), 0);
+	Vector2 velocity, acceleration;
 	std::vector<Pipe*> pipes;
 
 	bool keys[0xFF] = { 0 };
 	bool lastKeys[0xFF] = { 0 };
 	TimePoint begin, end;
-	double delta = 0.0;
-	float pipeX = 0;
+	double delta = 0, pipeX = 0;
 	bool gameOver = false;
 	Label* scoreText = new Label;
-	Label* deadText = new Label("You Died", Vector2());
+	Label* deadText = new Label("You Died", Vector2(), { 255, 0, 0 });
 	deadText->position = Vector2(halfWidth - (deadText->size.x / 2), 128);
-	Label* startText = new Label("Press SPACE to start", Vector2());
+	Label* startText = new Label("Press SPACE to start", Vector2(), { 0, 255, 0 });
 	startText->position = Vector2(halfWidth - (startText->size.x / 2), 512);
 
 	auto Reset = [&]() {
@@ -280,7 +284,7 @@ int main() {
 
 	while (running) {
 		begin = std::chrono::high_resolution_clock::now();
-		float dt = static_cast<float>(delta / 1000);
+		float dt = static_cast<float>(delta / 1000.0f);
 		velocity.y = 0;
 
 		SDL_Event ev;
@@ -299,24 +303,25 @@ int main() {
 		}
 		SDL_RenderClear(renderer);
 		SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
+		logo->Draw();
 
 		if (!playing && keys[SDLK_SPACE] && !lastKeys[SDLK_SPACE]) {
 			Reset();
 		}
 
-		Rectangle groundBox = Rectangle(Vector2(cameraPosition.x, PIPE_HEIGHT), Vector2(13, 1));
-		for (int x = cameraPosition.x; x < cameraPosition.x + 13; x++) {
-			for (int y = PIPE_HEIGHT; y < 15; y++) {
+		Rectangle groundBox = Rectangle(Vector2(cameraPosition.x, PIPE_HEIGHT), Vector2(GROUND_WIDTH, 1));
+		Rectangle skyBox = Rectangle(Vector2(cameraPosition.x, -1), Vector2(GROUND_WIDTH, 1));
+		for (int x = cameraPosition.x; x < cameraPosition.x + GROUND_WIDTH; x++) {
+			for (int y = PIPE_HEIGHT; y < PIPE_HEIGHT + GROUND_HEIGHT; y++) {
 				floor->rectangle.position = { (float)x, (float)y };
-				floor->rectangle.size = 1;
 				floor->Draw();
 			}
 		}
 
-		if (!pipes.size()) {
+		if (!pipes.size() && (playing && !gameOver)) {
 			int counter = 0;
 			while (counter < 10) {
-				pipeX += 8;
+				pipeX += PIPE_GAP;
 				pipes.push_back(new Pipe(player->rectangle.position.x + counter + pipeX));
 				counter++;
 			}
@@ -331,8 +336,7 @@ int main() {
 				p->Draw();
 			}
 			startText->Draw();
-		}
-		else {
+		} else {
 			player->rectangle.position.x += dt * moveSpeed;
 			player->Draw();
 			cameraPosition.x += dt * moveSpeed;
@@ -345,7 +349,7 @@ int main() {
 			}
 			player->rectangle.position += velocity * dt;
 
-			if (player->rectangle.Contains(groundBox)) {
+			if (player->rectangle.Contains(groundBox) || player->rectangle.Contains(skyBox)) {
 				std::cout << "You Died!" << std::endl;
 				playing = false;
 				gameOver = true;
@@ -389,6 +393,7 @@ int main() {
 
 	delete scoreText;
 	delete deadText;
+	delete logo;
 	delete floor;
 	delete player;
 	SDL_DestroyRenderer(renderer);
